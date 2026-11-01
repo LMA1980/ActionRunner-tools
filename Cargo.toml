@@ -1,0 +1,15 @@
+[package]
+name = "action-runner-tools"
+version = "0.1.0"
+edition = "2021"
+description = "Compile-time modular ToolAdapter trait registry for typed CI/CD tools in ActionRunner"
+license = "LGPL-3.0-only WITH LGPL-3.0-linking-exception"
+repository = "https://github.com/LMA1980/ActionRunner-tools"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "1"
+
+[dev-dependencies]
+tempfile = "3"
