@@ -6,7 +6,8 @@ use crate::adapter::{
     SandboxProfileRequirement, ToolAdapter, ToolExecutionMetrics, ToolInvocation,
 };
 use crate::adapters::common::{
-    count_occurrences, parse_coverage_pct, parse_flag_value, parse_test_results, split_dash_dash,
+    count_occurrences, parse_bench_results, parse_coverage_pct, parse_flag_value,
+    parse_test_results, split_dash_dash,
 };
 use crate::error::{MetricParseError, ToolBuildError, ToolValidationError};
 use crate::sanitize::{
@@ -92,13 +93,8 @@ impl ToolAdapter for CargoFmtAdapter {
         exit_code: i32,
     ) -> Result<ToolExecutionMetrics, MetricParseError> {
         Ok(ToolExecutionMetrics {
-            duration_ms: 0,
             exit_code,
-            tests_passed: None,
-            tests_failed: None,
-            warnings_count: None,
-            coverage_pct: None,
-            artifacts: Vec::new(),
+            ..ToolExecutionMetrics::default()
         })
     }
 }
@@ -220,13 +216,9 @@ impl ToolAdapter for CargoClippyAdapter {
     ) -> Result<ToolExecutionMetrics, MetricParseError> {
         let warnings = count_occurrences(stdout, stderr, "warning:")?;
         Ok(ToolExecutionMetrics {
-            duration_ms: 0,
             exit_code,
-            tests_passed: None,
-            tests_failed: None,
             warnings_count: Some(warnings),
-            coverage_pct: None,
-            artifacts: Vec::new(),
+            ..ToolExecutionMetrics::default()
         })
     }
 }
@@ -330,15 +322,14 @@ impl ToolAdapter for CargoTestAdapter {
         stderr: &[u8],
         exit_code: i32,
     ) -> Result<ToolExecutionMetrics, MetricParseError> {
-        let (passed, failed) = parse_test_results(stdout, stderr)?;
+        let parsed = parse_test_results(stdout, stderr)?;
         Ok(ToolExecutionMetrics {
-            duration_ms: 0,
             exit_code,
-            tests_passed: passed,
-            tests_failed: failed,
-            warnings_count: None,
-            coverage_pct: None,
-            artifacts: Vec::new(),
+            tests_passed: parsed.passed,
+            tests_failed: parsed.failed,
+            tests_ignored: parsed.ignored,
+            test_cases: parsed.test_cases,
+            ..ToolExecutionMetrics::default()
         })
     }
 }
@@ -415,18 +406,17 @@ impl ToolAdapter for CargoBenchAdapter {
 
     fn parse_metrics(
         &self,
-        _stdout: &[u8],
-        _stderr: &[u8],
+        stdout: &[u8],
+        stderr: &[u8],
         exit_code: i32,
     ) -> Result<ToolExecutionMetrics, MetricParseError> {
+        let parsed = parse_bench_results(stdout, stderr)?;
         Ok(ToolExecutionMetrics {
-            duration_ms: 0,
             exit_code,
-            tests_passed: None,
-            tests_failed: None,
-            warnings_count: None,
-            coverage_pct: None,
-            artifacts: Vec::new(),
+            bench_ns_per_iter: parsed.bench_ns_per_iter,
+            bench_mb_per_sec: parsed.bench_mb_per_sec,
+            benchmarks: parsed.benchmarks,
+            ..ToolExecutionMetrics::default()
         })
     }
 }
@@ -523,13 +513,8 @@ impl ToolAdapter for CargoAuditAdapter {
         exit_code: i32,
     ) -> Result<ToolExecutionMetrics, MetricParseError> {
         Ok(ToolExecutionMetrics {
-            duration_ms: 0,
             exit_code,
-            tests_passed: None,
-            tests_failed: None,
-            warnings_count: None,
-            coverage_pct: None,
-            artifacts: Vec::new(),
+            ..ToolExecutionMetrics::default()
         })
     }
 }
@@ -633,13 +618,9 @@ impl ToolAdapter for CargoLlvmCovAdapter {
     ) -> Result<ToolExecutionMetrics, MetricParseError> {
         let coverage = parse_coverage_pct(stdout, stderr)?;
         Ok(ToolExecutionMetrics {
-            duration_ms: 0,
             exit_code,
-            tests_passed: None,
-            tests_failed: None,
-            warnings_count: None,
             coverage_pct: coverage,
-            artifacts: Vec::new(),
+            ..ToolExecutionMetrics::default()
         })
     }
 }
@@ -744,15 +725,14 @@ impl ToolAdapter for CargoMiriAdapter {
         stderr: &[u8],
         exit_code: i32,
     ) -> Result<ToolExecutionMetrics, MetricParseError> {
-        let (passed, failed) = parse_test_results(stdout, stderr)?;
+        let parsed = parse_test_results(stdout, stderr)?;
         Ok(ToolExecutionMetrics {
-            duration_ms: 0,
             exit_code,
-            tests_passed: passed,
-            tests_failed: failed,
-            warnings_count: None,
-            coverage_pct: None,
-            artifacts: Vec::new(),
+            tests_passed: parsed.passed,
+            tests_failed: parsed.failed,
+            tests_ignored: parsed.ignored,
+            test_cases: parsed.test_cases,
+            ..ToolExecutionMetrics::default()
         })
     }
 }
@@ -846,13 +826,8 @@ impl ToolAdapter for CargoPublishAdapter {
         exit_code: i32,
     ) -> Result<ToolExecutionMetrics, MetricParseError> {
         Ok(ToolExecutionMetrics {
-            duration_ms: 0,
             exit_code,
-            tests_passed: None,
-            tests_failed: None,
-            warnings_count: None,
-            coverage_pct: None,
-            artifacts: Vec::new(),
+            ..ToolExecutionMetrics::default()
         })
     }
 }
@@ -932,13 +907,8 @@ impl ToolAdapter for CargoBuildAdapter {
         exit_code: i32,
     ) -> Result<ToolExecutionMetrics, MetricParseError> {
         Ok(ToolExecutionMetrics {
-            duration_ms: 0,
             exit_code,
-            tests_passed: None,
-            tests_failed: None,
-            warnings_count: None,
-            coverage_pct: None,
-            artifacts: Vec::new(),
+            ..ToolExecutionMetrics::default()
         })
     }
 }
