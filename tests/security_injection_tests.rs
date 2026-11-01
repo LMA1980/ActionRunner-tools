@@ -12,8 +12,9 @@ use action_runner_tools::{
     is_prohibited_shell_wrapper, validate_invocation_base, validate_path_within_working_dir,
     validate_safe_arg, validate_safe_relative_path, CargoAuditAdapter, CargoBenchAdapter,
     CargoBuildAdapter, CargoClippyAdapter, CargoFmtAdapter, CargoLlvmCovAdapter, CargoMiriAdapter,
-    CargoPublishAdapter, CargoTestAdapter, MdformatAdapter, ToolAdapter, ToolError, ToolInvocation,
-    ToolRegistry, ToolValidationError, TrunkAdapter,
+    CargoPublishAdapter, CargoTestAdapter, MdformatAdapter, ParsedBenchmark, ParsedTestCase,
+    TestCaseStatus, ToolAdapter, ToolError, ToolInvocation, ToolRegistry, ToolValidationError,
+    TrunkAdapter,
 };
 
 #[test]
@@ -903,4 +904,165 @@ fn test_tool_registry_with_builtin_adapters_coverage() {
             "unknown".to_string()
         )))
     );
+}
+
+#[test]
+fn test_granular_test_case_extraction_in_cargo_test_and_miri() {
+    let test_adapter = CargoTestAdapter;
+    let miri_adapter = CargoMiriAdapter;
+
+    let stdout = b"\
+running 4 tests
+test adapters::tests::test_fast_pass ... ok (14ms)
+test adapters::tests::test_slow_pass ... ok (1.25s)
+test adapters::tests::test_skipped_case ... ignored
+test adapters::tests::test_assertion_fail ... FAILED (8ms)
+
+failures:
+
+---- adapters::tests::test_assertion_fail stdout ----
+thread 'adapters::tests::test_assertion_fail' panicked at src/lib.rs:42:9:
+assertion `left == right` failed
+  left: 10
+ right: 20
+
+failures:
+    adapters::tests::test_assertion_fail
+
+test result: FAILED. 2 passed; 1 failed; 1 ignored; 0 measured; 0 filtered out; finished in 1.27s
+";
+
+    for adapter in [
+        &test_adapter as &dyn ToolAdapter,
+        &miri_adapter as &dyn ToolAdapter,
+    ] {
+        let metrics = adapter
+            .parse_metrics(stdout, b"", 101)
+            .expect("parse granular test metrics");
+
+        assert_eq!(metrics.exit_code, 101);
+        assert_eq!(metrics.tests_passed, Some(2));
+        assert_eq!(metrics.tests_failed, Some(1));
+        assert_eq!(metrics.tests_ignored, Some(1));
+        assert_eq!(metrics.test_cases.len(), 4);
+
+        assert_eq!(
+            metrics.test_cases[0],
+            ParsedTestCase {
+                test_name: "adapters::tests::test_fast_pass".to_string(),
+                status: TestCaseStatus::Passed,
+                duration_ms: Some(14),
+                failure_snippet: None,
+            }
+        );
+        assert_eq!(
+            metrics.test_cases[1],
+            ParsedTestCase {
+                test_name: "adapters::tests::test_slow_pass".to_string(),
+                status: TestCaseStatus::Passed,
+                duration_ms: Some(1250),
+                failure_snippet: None,
+            }
+        );
+        assert_eq!(
+            metrics.test_cases[2],
+            ParsedTestCase {
+                test_name: "adapters::tests::test_skipped_case".to_string(),
+                status: TestCaseStatus::Ignored,
+                duration_ms: None,
+                failure_snippet: None,
+            }
+        );
+        assert_eq!(
+            metrics.test_cases[3].test_name,
+            "adapters::tests::test_assertion_fail"
+        );
+        assert_eq!(metrics.test_cases[3].status, TestCaseStatus::Failed);
+        assert_eq!(metrics.test_cases[3].duration_ms, Some(8));
+        let snippet = metrics.test_cases[3]
+            .failure_snippet
+            .as_deref()
+            .expect("failure snippet must be captured");
+        assert!(snippet.contains("assertion `left == right` failed"));
+        assert!(snippet.contains("left: 10"));
+    }
+}
+
+#[test]
+fn test_granular_benchmark_extraction_libtest_and_criterion_with_hardware_tags() {
+    let bench_adapter = CargoBenchAdapter;
+
+    let stdout = b"\
+# hardware profile: arch=riscv64 cluster=A100 vlen=1024
+running 2 tests
+test kernels::rvv_gemm_q4_0 ... bench:       1,240 ns/iter (+/- 35) = 4096 MB/s
+test kernels::rvv_rmsnorm_f32 ... bench:         360 ns/iter (+/- 12) = 1024 MB/s
+
+# switching cluster context: arch=riscv64 cluster=X100 vlen=256
+tokenizer/encode_batch  time:   [9.80 us 10.00 us 10.20 us]
+                        thrpt:  [490.0 MB/s 500.0 MB/s 510.0 MB/s]
+Benchmarking kv_cache/page_lookup: Collecting 100 samples
+kv_cache/page_lookup
+                        time:   [45.0 ns 50.0 ns 55.0 ns]
+";
+
+    let metrics = bench_adapter
+        .parse_metrics(stdout, b"", 0)
+        .expect("parse granular bench metrics");
+
+    assert_eq!(metrics.exit_code, 0);
+    assert_eq!(metrics.benchmarks.len(), 4);
+
+    assert_eq!(
+        metrics.benchmarks[0],
+        ParsedBenchmark {
+            bench_name: "kernels::rvv_gemm_q4_0".to_string(),
+            ns_per_iter: 1240.0,
+            variance_ns: 35.0,
+            throughput_mb_s: Some(4096.0),
+            arch: Some("riscv64".to_string()),
+            cpu_cluster: Some("A100".to_string()),
+            vlen_bits: Some(1024),
+        }
+    );
+
+    assert_eq!(
+        metrics.benchmarks[1],
+        ParsedBenchmark {
+            bench_name: "kernels::rvv_rmsnorm_f32".to_string(),
+            ns_per_iter: 360.0,
+            variance_ns: 12.0,
+            throughput_mb_s: Some(1024.0),
+            arch: Some("riscv64".to_string()),
+            cpu_cluster: Some("A100".to_string()),
+            vlen_bits: Some(1024),
+        }
+    );
+
+    assert_eq!(metrics.benchmarks[2].bench_name, "tokenizer/encode_batch");
+    assert!((metrics.benchmarks[2].ns_per_iter - 10_000.0).abs() < 1e-6);
+    assert!((metrics.benchmarks[2].variance_ns - 200.0).abs() < 1e-6);
+    assert_eq!(metrics.benchmarks[2].throughput_mb_s, Some(500.0));
+    assert_eq!(metrics.benchmarks[2].arch.as_deref(), Some("riscv64"));
+    assert_eq!(metrics.benchmarks[2].cpu_cluster.as_deref(), Some("X100"));
+    assert_eq!(metrics.benchmarks[2].vlen_bits, Some(256));
+
+    assert_eq!(
+        metrics.benchmarks[3],
+        ParsedBenchmark {
+            bench_name: "kv_cache/page_lookup".to_string(),
+            ns_per_iter: 50.0,
+            variance_ns: 5.0,
+            throughput_mb_s: None,
+            arch: Some("riscv64".to_string()),
+            cpu_cluster: Some("X100".to_string()),
+            vlen_bits: Some(256),
+        }
+    );
+
+    // Aggregate fields preserved
+    let expected_avg_ns = (1240.0 + 360.0 + 10_000.0 + 50.0) / 4.0;
+    let expected_avg_mb = (4096.0 + 1024.0 + 500.0) / 3.0;
+    assert!((metrics.bench_ns_per_iter.expect("aggregate ns") - expected_avg_ns).abs() < 1e-6);
+    assert!((metrics.bench_mb_per_sec.expect("aggregate mb/s") - expected_avg_mb).abs() < 1e-6);
 }

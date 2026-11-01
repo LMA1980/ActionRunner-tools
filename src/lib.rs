@@ -6,7 +6,10 @@ pub mod error;
 pub mod registry;
 pub mod sanitize;
 
-pub use adapter::{SandboxProfileRequirement, ToolAdapter, ToolExecutionMetrics, ToolInvocation};
+pub use adapter::{
+    ParsedBenchmark, ParsedTestCase, SandboxProfileRequirement, TestCaseStatus, ToolAdapter,
+    ToolExecutionMetrics, ToolInvocation,
+};
 pub use adapters::{
     CargoAuditAdapter, CargoBenchAdapter, CargoBuildAdapter, CargoClippyAdapter, CargoFmtAdapter,
     CargoLlvmCovAdapter, CargoMiriAdapter, CargoPublishAdapter, CargoTestAdapter, MdformatAdapter,
@@ -79,8 +82,7 @@ mod tests {
                 tests_passed: Some(u32::from(text.contains("ok"))),
                 tests_failed: Some(0),
                 warnings_count: Some(0),
-                coverage_pct: None,
-                artifacts: Vec::new(),
+                ..ToolExecutionMetrics::default()
             })
         }
     }

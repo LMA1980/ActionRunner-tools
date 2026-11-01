@@ -136,13 +136,8 @@ impl ToolAdapter for TrunkAdapter {
         exit_code: i32,
     ) -> Result<ToolExecutionMetrics, MetricParseError> {
         Ok(ToolExecutionMetrics {
-            duration_ms: 0,
             exit_code,
-            tests_passed: None,
-            tests_failed: None,
-            warnings_count: None,
-            coverage_pct: None,
-            artifacts: Vec::new(),
+            ..ToolExecutionMetrics::default()
         })
     }
 }

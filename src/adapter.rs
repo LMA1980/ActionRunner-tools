@@ -68,6 +68,49 @@ pub struct SandboxProfileRequirement {
     pub required_memlock_kb: u64,
 }
 
+/// Outcome status of an individual parsed test case.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum TestCaseStatus {
+    /// The test case passed (`ok`).
+    Passed,
+    /// The test case failed (`FAILED`).
+    Failed,
+    /// The test case was ignored (`ignored`).
+    Ignored,
+}
+
+/// Granular per-test case result extracted from test runner output.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ParsedTestCase {
+    /// Canonical test identifier (e.g., `"module::tests::test_foo"`).
+    pub test_name: String,
+    /// Execution status of the test case.
+    pub status: TestCaseStatus,
+    /// Optional per-test execution duration in milliseconds.
+    pub duration_ms: Option<u64>,
+    /// Optional captured stdout/stderr failure block when `status == TestCaseStatus::Failed`.
+    pub failure_snippet: Option<String>,
+}
+
+/// Granular per-benchmark statistical result extracted from benchmark output.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ParsedBenchmark {
+    /// Canonical benchmark name (e.g., `"kernels::gemm_q4_0"`).
+    pub bench_name: String,
+    /// Point estimate of nanoseconds per iteration.
+    pub ns_per_iter: f64,
+    /// Variance / half-width / MAD in nanoseconds (`+/- <V>` or `(high - low) / 2`).
+    pub variance_ns: f64,
+    /// Optional throughput in megabytes per second (`MB/s`).
+    pub throughput_mb_s: Option<f64>,
+    /// Optional target architecture tag (`"riscv64"`, `"x86_64"`, `"aarch64"`).
+    pub arch: Option<String>,
+    /// Optional CPU cluster tag (`"X100"`, `"A100"`, `"generic"`).
+    pub cpu_cluster: Option<String>,
+    /// Optional RISC-V vector length in bits (`256`, `1024`).
+    pub vlen_bits: Option<u32>,
+}
+
 /// Structured metrics extracted after a tool execution completes.
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone, Default)]
 pub struct ToolExecutionMetrics {
@@ -79,12 +122,27 @@ pub struct ToolExecutionMetrics {
     pub tests_passed: Option<u32>,
     /// Number of unit/integration tests that failed, if applicable.
     pub tests_failed: Option<u32>,
+    /// Number of unit/integration tests that were ignored, if applicable.
+    #[serde(default)]
+    pub tests_ignored: Option<u32>,
     /// Number of compiler or linter warnings emitted, if applicable.
     pub warnings_count: Option<u32>,
     /// Line or region test coverage percentage (`0.0..=100.0`), if applicable.
     pub coverage_pct: Option<f64>,
+    /// Aggregate benchmark latency in nanoseconds per iteration, if applicable.
+    #[serde(default)]
+    pub bench_ns_per_iter: Option<f64>,
+    /// Aggregate benchmark throughput in megabytes per second, if applicable.
+    #[serde(default)]
+    pub bench_mb_per_sec: Option<f64>,
     /// Relative paths or identifiers of generated build/coverage artifacts.
     pub artifacts: Vec<String>,
+    /// Granular per-test execution outcomes extracted from test output.
+    #[serde(default)]
+    pub test_cases: Vec<ParsedTestCase>,
+    /// Granular per-benchmark statistical results extracted from benchmark output.
+    #[serde(default)]
+    pub benchmarks: Vec<ParsedBenchmark>,
 }
 
 /// Core interface for compile-time typed CI/CD tool execution without shell interpolation.
