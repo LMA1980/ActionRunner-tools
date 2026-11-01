@@ -34,6 +34,7 @@ Compile-time modular Rust `ToolAdapter` trait registry for typed CI/CD tools acr
 
 | Tool Adapter | Target Binary | Primary Subcommands & Roles | Sandbox Egress Default |
 |---|---|---|---|
+| `CargoBuildAdapter` | `cargo` | `build --workspace --release` (release binary compilation) | Offline (`none`) |
 | `CargoFmtAdapter` | `cargo` | `fmt --check` (code hygiene and formatting validation) | Offline (`none`) |
 | `CargoClippyAdapter` | `cargo` | `clippy --all-targets -- -D warnings` (static analysis) | Offline (`none`) |
 | `CargoTestAdapter` | `cargo` | `test --workspace` (unit, integration, and doc tests) | Offline (`none`) |
@@ -91,4 +92,4 @@ pub trait ToolAdapter: Send + Sync {
 
 ## License
 
-Licensed under the GNU Affero General Public License v3.0 (AGPL-3.0-only). See LICENSE for details.
+Licensed under the GNU Lesser General Public License v3.0 with the LGPL-3.0 Linking Exception (LGPL-3.0-only WITH LGPL-3.0-linking-exception). See LICENSE for details.
